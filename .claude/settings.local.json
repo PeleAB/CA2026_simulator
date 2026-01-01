@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(ls:*)",
+      "Bash(./CA2026.exe)",
+      "Bash(cat:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: CA2026 4-core processor simulator\n\nProject Setup:\n- 4-core pipelined processor simulator with MESI cache coherency\n- Visual Studio 2022 project configuration\n- VS Code build/debug configuration\n\nImplemented Components:\n- Data structures \\(sim.h\\): Simulator, Core, Pipeline, Cache, MainMemory, BusArbiter\n- Instruction decoder \\(instruction.c\\): decode/encode, opcode handling, helper functions\n- Initialization \\(init.c\\): init_simulator, init_core, init_cache, init_main_memory, init_bus_arbiter\n- File I/O \\(stubs.c\\): All 9 load/save functions for imem, memin, memout, regout, trace, bustrace, dsram, tsram, stats\n\nCritical Fixes:\n- Stack overflow fix: Allocate Simulator on heap \\(8MB+ structure\\)\n- Security fixes: sprintf -> sprintf_s with bounds checking\n- Compiler warnings: _CRT_SECURE_NO_WARNINGS for standard C functions\n- Array bounds: Explicit array sizing with NUM_FILES constant\n\nTesting:\n- Successfully loads example instruction and memory files\n- Generates all 27 output files with correct formats\n- Verified hex formatting and file structure\n\nNext Steps:\n- Implement register file \\(R0=0, R1=1, R2-R15 general purpose\\)\n- Implement 5-stage pipeline \\(Fetch, Decode, Execute, Mem, WriteBack\\)\n- Implement cache and MESI protocol\n- Implement bus arbiter with round-robin arbitration\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python3:*)",
+      "Bash(powershell -Command \"Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead\\(''C:\\\\developments\\\\CA2026_projectx\\\\CA2026_project\\\\docs\\\\project_architecture_v2.docx''\\); $entry = $zip.Entries | Where-Object { $_Name -eq ''document.xml'' }; $stream = $entry.Open\\(\\); $reader = New-Object System.IO.StreamReader\\($stream\\); $content = $reader.ReadToEnd\\(\\); $reader.Close\\(\\); $stream.Close\\(\\); $zip.Dispose\\(\\); $content\")",
+      "Bash(powershell:*)",
+      "Bash(del \"C:\\\\developments\\\\CA2026_projectx\\\\extract_docx.ps1\")",
+      "Bash(wc:*)",
+      "Bash(python -c:*)"
+    ]
+  }
+}

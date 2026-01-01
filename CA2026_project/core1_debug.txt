@@ -1,0 +1,2 @@
+Cycle 4 ReCheck RS(3) Res=1 Restrict=1 PendingAddr=2 PendingVal=1 PostAddr=0 PostVal=0
+Cycle 5 ReCheck RS(3) Res=1 Restrict=1 PendingAddr=3 PendingVal=1 PostAddr=2 PostVal=1
