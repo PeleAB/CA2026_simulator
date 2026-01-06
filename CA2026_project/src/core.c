@@ -103,7 +103,9 @@ void stage_decode(Core* core) {
         // Check for hazards (Check RS and RT)
         if (check_data_hazard(core, inst.rs) || check_data_hazard(core, inst.rt)) {
             dec->internal_stall = true; 
-            core->decode_stall++;
+            if (!core->pipeline.execute.stall) {
+                core->decode_stall++;
+            }
             return;
         }
 
@@ -113,7 +115,10 @@ void stage_decode(Core* core) {
         // We must check if RD is being written by a previous instruction.
         if ((is_branch_instruction(inst) || inst.opcode == OP_JAL || inst.opcode == OP_SW) && check_data_hazard(core, inst.rd)) {
             dec->internal_stall = true;
-            core->decode_stall++;
+            // Only count as a "Decode Stall" if we aren't already blocked by the Execute stage
+            if (!core->pipeline.execute.stall) {
+                core->decode_stall++;
+            }
             return;
         }
 
