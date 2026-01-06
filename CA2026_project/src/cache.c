@@ -46,7 +46,9 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
     // 1. Check for a Cache Hit
     if (entry->valid && entry->tag == tag && entry->mesi_state != MESI_INVALID) {
         uint16_t dsram_idx = index * CACHE_BLOCK_SIZE + block_offset;
-        *data = cache->dsram[dsram_idx];
+        *data = cache->dsram[dsram_idx]; // Read data
+        
+        sim->cores[core_id].read_hit++; // STATS
         return true;
     }
 
@@ -55,7 +57,6 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
        
         // If we have a Modified block at this index, we must write it back first (Conflict Miss)
         if (entry->valid && entry->mesi_state == MESI_MODIFIED) {
-          
             // In a real MESI system, you'd issue a Flush here. 
             // For this project, you can handle the write-back as a separate Bus transaction if needed.
         }
@@ -63,8 +64,10 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
         // Issue the Bus Read (BusRd)
         sim->bus.pending_trans[core_id].cmd = 1; // 1: BusRd 
         sim->bus.pending_trans[core_id].addr = addr; 
-            sim->bus.pending_trans[core_id].origid = core_id; 
-            sim->bus.pending[core_id] = true; 
+        sim->bus.pending_trans[core_id].origid = core_id; 
+        sim->bus.pending[core_id] = true; 
+        
+        sim->cores[core_id].read_miss++; // STATS (Count once per transaction initiation)
     }
 
     // Still a miss until the Bus finishes the 8-word Flush
@@ -82,6 +85,8 @@ bool cache_write(Cache* cache, uint32_t addr, uint32_t data, Simulator* sim, int
         uint16_t dsram_idx = index * CACHE_BLOCK_SIZE + block_offset;
         cache->dsram[dsram_idx] = data;
         entry->mesi_state = 3; // Move to Modified 
+        
+        sim->cores[core_id].write_hit++; // STATS
         return true;
     }
 
@@ -91,6 +96,8 @@ bool cache_write(Cache* cache, uint32_t addr, uint32_t data, Simulator* sim, int
         sim->bus.pending_trans[core_id].addr = addr;
         sim->bus.pending_trans[core_id].origid = core_id;
         sim->bus.pending[core_id] = true;
+        
+        sim->cores[core_id].write_miss++; // STATS
     }
 
     return false; // Always stall until the Flush arrives [cite: 37]

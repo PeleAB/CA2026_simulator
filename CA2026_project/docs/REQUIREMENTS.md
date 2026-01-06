@@ -134,14 +134,15 @@ MESI State        |  Tag
 ```
 
 ### Address Breakdown (21-bit data address)
+### Address Breakdown (21-bit data address)
 ```
-Bits  20:9        |  8:6          |  5:3        |  2:0
-----------------------------------------------------------------
-Tag (12 bits)    | Set (6 bits) | Block (3)   | Word offset (3)
-----------------------------------------------------------------
+Bits  20:9        |  8:3          |  2:0
+--------------------------------------------------
+Tag (12 bits)    | Set (6 bits)  | Word offset (3)
+--------------------------------------------------
 ```
 
-**Note:** Actually set index uses bits [8:3] for 64 sets, word offset is [2:0]
+**Note:** Set index uses bits [8:3] for 64 sets, word offset is [2:0]
 
 ### Initial State
 - At start of simulation, both DSRAM and TSRAM are **zeroed**
@@ -183,19 +184,11 @@ Tag (12 bits)    | Set (6 bits) | Block (3)   | Word offset (3)
    - **Shared** if `bus_shared = 1`
 
 #### BusRdX (Read Exclusive - for writes)
-
-**Case 1: Cache miss (Invalid state)**
 1. Requesting core issues BusRdX with address
 2. Data provider (memory or Modified cache) sends block via Flush (16+ cycles)
 3. All other caches invalidate their copies
 4. Requesting core sets state to **Modified**
 
-**Case 2: Upgrade from Shared (write hit on Shared block)**
-1. Requesting core issues BusRdX with address (1 cycle only)
-2. **No Flush needed** - requesting core already has the data
-3. All other caches invalidate their copies immediately
-4. Requesting core transitions to **Modified**
-5. **Total time: 1 cycle** (not 16+ cycles)
 
 #### Flush (Write-back)
 1. Sends data block back to memory or another cache
@@ -234,7 +227,7 @@ Tag (12 bits)    | Set (6 bits) | Block (3)   | Word offset (3)
 
 #### On Cache Write Hit
 - **Exclusive** → **Modified**: just write (silent upgrade, no bus transaction)
-- **Shared** → **Modified**: issue **BusRdX** (1 cycle, no Flush needed - data already in cache), others invalidate
+- **Shared** → **Modified**: issue **BusRdX** (Wait for Flush/Response - treats as miss), others invalidate
 - **Modified** → **Modified**: just write (no bus transaction)
 
 #### On Cache Write Miss
@@ -295,7 +288,7 @@ Bits    31:24     | 23:20 | 19:16 | 15:12 |  11:0
 | 12 | bgt | if (R[rs] > R[rt]) pc = R[rd][9:0] | Branch if greater than |
 | 13 | ble | if (R[rs] <= R[rt]) pc = R[rd][9:0] | Branch if less or equal |
 | 14 | bge | if (R[rs] >= R[rt]) pc = R[rd][9:0] | Branch if greater or equal |
-| 15 | jal | R[15] = PC + 4, pc = R[rd][9:0] | Jump and link |
+| 15 | jal | R[15] = PC + 1, pc = R[rd][9:0] | Jump and link |
 | 16 | lw | R[rd] = MEM[R[rs] + R[rt]] | Load word |
 | 17 | sw | MEM[R[rs] + R[rt]] = R[rd] | Store word |
 | 20 | halt | Halt this core | Halt instruction |
