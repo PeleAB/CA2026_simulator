@@ -107,6 +107,16 @@ void stage_decode(Core* core) {
             return;
         }
 
+        // Stricter Hazard Detection: 
+        // 1. Branches and JAL use RD for target calculation!
+        // 2. SW uses RD as the Data Source! (read in Execute)
+        // We must check if RD is being written by a previous instruction.
+        if ((is_branch_instruction(inst) || inst.opcode == OP_JAL || inst.opcode == OP_SW) && check_data_hazard(core, inst.rd)) {
+            dec->internal_stall = true;
+            core->decode_stall++;
+            return;
+        }
+
         // If we get here, the hazard is cleared
         dec->internal_stall = false;
         dec->rs_value = read_register(core, inst.rs, dec->imm_val);
@@ -203,8 +213,14 @@ void stage_execute(Core *core) {
 }
 
 // Stage 4: Memory Access
+// Stage 4: Memory Access
 void stage_memory(Core* core, Simulator* sim) {
     Pipeline* p = &core->pipeline;
+    
+    // Capture state at start of cycle: 
+    // If p->mem was valid BEFORE we potentially pull new work, then we are entering a "Retry" / "Stall" cycle.
+    // If p->mem was invalid, any work we process in this function is "New".
+    bool is_retry = p->mem.valid;
 
     // 1. Pull from Execute
     // This happens at the end of the clock cycle T.
@@ -245,6 +261,17 @@ void stage_memory(Core* core, Simulator* sim) {
             bool hit = (inst.opcode == 16) ?
                 cache_read(&core->cache, p->mem.alu_result, &loaded_data, sim, core->core_id) :
                 cache_write(&core->cache, p->mem.alu_result, p->mem.mem_data, sim, core->core_id);
+
+            // Update Statistics (Only on first attempt)
+            if (!is_retry) {
+                if (inst.opcode == 16) { // LW
+                    if (hit) core->read_hit++;
+                    else core->read_miss++;
+                } else { // SW
+                    if (hit) core->write_hit++;
+                    else core->write_miss++;
+                }
+            }
 
             if (hit) {
                 if (inst.opcode == 16) p->mem.mem_data = loaded_data; // Capture data for WB

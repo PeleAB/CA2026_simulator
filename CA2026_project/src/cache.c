@@ -48,7 +48,7 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
         uint16_t dsram_idx = index * CACHE_BLOCK_SIZE + block_offset;
         *data = cache->dsram[dsram_idx]; // Read data
         
-        sim->cores[core_id].read_hit++; // STATS
+        // sim->cores[core_id].read_hit++; // STATS - Moved to core.c
         return true;
     }
 
@@ -67,7 +67,7 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
         sim->bus.pending_trans[core_id].origid = core_id; 
         sim->bus.pending[core_id] = true; 
         
-        sim->cores[core_id].read_miss++; // STATS (Count once per transaction initiation)
+        // sim->cores[core_id].read_miss++; // STATS - Moved to core.c
     }
 
     // Still a miss until the Bus finishes the 8-word Flush
@@ -86,7 +86,7 @@ bool cache_write(Cache* cache, uint32_t addr, uint32_t data, Simulator* sim, int
         cache->dsram[dsram_idx] = data;
         entry->mesi_state = 3; // Move to Modified 
         
-        sim->cores[core_id].write_hit++; // STATS
+        // sim->cores[core_id].write_hit++; // STATS - Moved to core.c
         return true;
     }
 
@@ -97,7 +97,7 @@ bool cache_write(Cache* cache, uint32_t addr, uint32_t data, Simulator* sim, int
         sim->bus.pending_trans[core_id].origid = core_id;
         sim->bus.pending[core_id] = true;
         
-        sim->cores[core_id].write_miss++; // STATS
+        // sim->cores[core_id].write_miss++; // STATS - Moved to core.c
     }
 
     return false; // Always stall until the Flush arrives [cite: 37]
@@ -174,8 +174,9 @@ void cache_handle_bus_response(Cache* cache, BusTransaction* trans, int core_id,
             else {
                 cache->tsram[index].mesi_state = 3;
             }
-            // Release stall when block is complete
-            sim->cores[core_id].pipeline.mem.internal_stall = false;
+            // Release stall when block is complete - REMOVED to align with Reference Timing
+            // Stall clears in next cycle's stage_memory() when cache_read() hits
+            // sim->cores[core_id].pipeline.mem.internal_stall = false;
         }
     }
 }
