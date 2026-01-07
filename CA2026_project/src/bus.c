@@ -68,7 +68,15 @@ void bus_cycle(Simulator* sim) {
             if (i != bus->owner) cache_snoop(&sim->cores[i].cache, &output, i, sim);
         }
         bus->shared_at_request = output.shared;
-        add_bus_trace_entry(bus, &output, sim->global_cycle);
+        
+        // Trace Logic for compatibility with reference:
+        // If data is provided by a Core (Modified state), the Request trace shows Shared=0.
+        // The subsequent Flush trace will show Shared=1 (carried by flush).
+        BusTransaction trace_trans = output;
+        if (bus->provider_id != 4) {
+            trace_trans.shared = false;
+        }
+        add_bus_trace_entry(bus, &trace_trans, sim->global_cycle);
 
         if (bus->provider_id != 4) {
             bus->state = BUS_STATE_FLUSH;
