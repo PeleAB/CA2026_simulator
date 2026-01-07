@@ -86,12 +86,18 @@ void stage_decode(Core* core) {
     // We can pull if ID is empty and Fetch has a valid instruction,
     // and Fetch isn't stalling (though Fetch never stalls internally).
     if (!dec->valid && fet->valid && !fet->stall) {
-        dec->inst = fet->inst;
-        dec->pc = fet->pc;
-        dec->inst_word = fet->inst_word;
-        dec->is_halt = fet->is_halt;
-        dec->valid = true;
-        fet->valid = false; 
+        if (core->halt_fetch) {
+            // If we have already halted fetching, any instruction lingering in Fetch
+            // should be discarded (killed) and not allowed to proceed to Decode.
+            fet->valid = false;
+        } else {
+            dec->inst = fet->inst;
+            dec->pc = fet->pc;
+            dec->inst_word = fet->inst_word;
+            dec->is_halt = fet->is_halt;
+            dec->valid = true;
+            fet->valid = false; 
+        }
     }
 
     if (dec->valid) {
@@ -155,9 +161,11 @@ void stage_decode(Core* core) {
         // 3. Handle Halt [cite: 65, 68]
         else if (inst.opcode == OP_HALT) {
             dec->is_halt = true;
-            // PDF: Cancel instruction in Fetch (PC+1)
-            fet->valid = false;
-            core->halt_fetch = true;
+            // Handle Halt: Stop fetching.
+            // Do NOT clear fet->valid here. The instruction currently in Fetch (PC+1)
+            // should remain visible in the trace for THIS cycle.
+            // It will be discarded by the "Pull" logic in the NEXT cycle.
+            // core->halt_fetch = true; // Moved to end of cycle update
         }
     }
 }
@@ -429,6 +437,14 @@ void execute_core_cycle(Core *core, Simulator *sim) {
         // Core Halt detection
         if (p->writeback.valid && p->writeback.is_halt) {
             core->halted = true;
+        }
+        
+        // Halt Fetch detection: 
+        // If Decode stage processed a HALT this cycle, stop fetching from NEXT cycle onwards.
+        // We do this check at the end of the cycle so that the Fetch stage (which ran earlier/concurrently)
+        // doesn't see it immediately, allowing PC+1 to be fetched once.
+        if (p->decode.valid && p->decode.is_halt) {
+            core->halt_fetch = true;
         }
     }
 }
