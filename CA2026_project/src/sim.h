@@ -90,6 +90,7 @@ typedef struct {
     uint32_t addr;        // 21-bit word address
     uint32_t data;        // 32-bit data
     bool shared;          // Shared signal (set by snooping caches)
+    bool modified_response; // New: Distinct signal for Modified/Owner response (for trace accuracy)
 } BusTransaction;
 
 /* ============================================
@@ -122,8 +123,6 @@ typedef struct {
 
     uint32_t pending_addr;
     uint32_t pending_data;
-    bool shared_on_bus;        // Remember shared signal from request cycle
-    bool is_write_miss;        // Distinguish between Rd miss and RdX miss
     int words_received;        // For 8-word transfer
     int words_sent;            // For 8-word transfer
 } Cache;
@@ -175,7 +174,6 @@ typedef struct {
     int core_id;                      // 0-3
     uint16_t pc;                      // Program counter (10 bits)
     uint32_t registers[NUM_REGISTERS]; // Register file (R0=0, R1=imm, R2-R15 general)
-    uint32_t imm_register;            // R1 special register: sign-extended immediate
     uint32_t imem[IMEM_SIZE];         // Instruction memory
     Cache cache;                      // Data cache
     Pipeline pipeline;                // 5-stage pipeline
@@ -184,14 +182,9 @@ typedef struct {
     bool halt_fetch;                  // Stop fetching new instructions (HALT in ID)
     bool branch_pending;              // Branch resolved, will update PC after delay slot
     uint16_t branch_target;           // Target PC for pending branch
-    uint16_t branch_source_pc;        // PC of the branch instruction itself
 
     // Register write tracking (for hazard detection across cycle boundaries)
     uint8_t wb_reg_written;           // Register being written by WB this cycle (0 = none)
-    
-    // Post-WB Latch (Delay slot for Reg Write)
-    uint8_t post_wb_reg_addr;
-    uint32_t post_wb_reg_val;
 
     // Pending register write (from current WB stage)
     uint8_t pending_reg_write_addr;
@@ -239,7 +232,6 @@ typedef struct {
     BusState state;               // Current bus state
     int timer;                    // Cycles remaining in current state
     int provider_id;              // Who is providing the data (0-3: core, 4: memory)
-    bool upgrade_only;            // True if BusRdX is a silent upgrade (1 cycle)
     bool shared_at_request;       // Shared bit detected during Request cycle
     
     // Data transfer state

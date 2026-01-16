@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 #include "sim.h"
 
 // ====================================================================================
@@ -68,10 +69,6 @@ void stage_fetch(Core* core) {
             core->pipeline.fetch.pc = core->pc;
             core->pipeline.fetch.valid = true;
             core->pipeline.fetch.is_halt = (core->pipeline.fetch.inst.opcode == OP_HALT);
-
-            if (core->pipeline.fetch.is_halt) {
-                // Detected HALT in FETCH - purely for internal tracking if needed
-            }
 
             // Target the next sequential instruction
             core->pc++;
@@ -245,16 +242,16 @@ void stage_memory(Core* core, Simulator* sim) {
         // We must check for a cache miss the MOMENT the instruction enters MEM.
         // This prevents Write-Back from pulling it out at the start of Cycle T+1.
         Instruction inst = p->mem.inst;
-        if (inst.opcode == 16 || inst.opcode == 17) { // LW or SW
+        if (inst.opcode == OP_LW || inst.opcode == OP_SW) {
             uint32_t addr = p->mem.alu_result;
             uint8_t index = (addr >> 3) & 0x3F;
             uint16_t tag = (addr >> 9) & 0xFFF;
             TSRAMEntry* entry = &core->cache.tsram[index];
 
-            bool hit = (entry->valid && entry->tag == tag && entry->mesi_state != 0);
+            bool hit = (entry->valid && entry->tag == tag && entry->mesi_state != MESI_INVALID);
 
             // Special case: SW into a Shared block requires a BusRdX (Upgrade), so it's a "Miss"
-            if (inst.opcode == 17 && hit && entry->mesi_state == 1) {
+            if (inst.opcode == OP_SW && hit && entry->mesi_state == MESI_SHARED) {
                 hit = false;
             }
 
@@ -268,16 +265,16 @@ void stage_memory(Core* core, Simulator* sim) {
     // 2. Process instruction currently in MEM
     if (p->mem.valid) {
         Instruction inst = p->mem.inst;
-        if (inst.opcode == 16 || inst.opcode == 17) {
+        if (inst.opcode == OP_LW || inst.opcode == OP_SW) {
             uint32_t loaded_data;
             // This call triggers the actual bus request on the first cycle of a miss
-            bool hit = (inst.opcode == 16) ?
+            bool hit = (inst.opcode == OP_LW) ?
                 cache_read(&core->cache, p->mem.alu_result, &loaded_data, sim, core->core_id) :
                 cache_write(&core->cache, p->mem.alu_result, p->mem.mem_data, sim, core->core_id);
 
             // Update Statistics (Only on first attempt)
             if (!is_retry) {
-                if (inst.opcode == 16) { // LW
+                if (inst.opcode == OP_LW) {
                     if (hit) core->read_hit++;
                     else core->read_miss++;
                 } else { // SW
@@ -287,7 +284,7 @@ void stage_memory(Core* core, Simulator* sim) {
             }
 
             if (hit) {
-                if (inst.opcode == 16) p->mem.mem_data = loaded_data; // Capture data for WB
+                if (inst.opcode == OP_LW) p->mem.mem_data = loaded_data; // Capture data for WB
                 p->mem.internal_stall = false; // Release the stall for next cycle
             }
             else {
@@ -347,7 +344,7 @@ static void log_cycle_trace(Core *core) {
     char *buffer = core->trace_lines[core->trace_count];
     int offset = 0;
 
-    offset += sprintf(buffer + offset, "%llu ", core->cycles);
+    offset += sprintf(buffer + offset, "%" PRIu64 " ", core->cycles);
 
     if (core->pipeline.fetch.valid) {
         offset += sprintf(buffer + offset, "%03X ", core->pipeline.fetch.pc);

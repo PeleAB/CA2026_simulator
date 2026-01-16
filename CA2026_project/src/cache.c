@@ -54,17 +54,12 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
 
     // 2. Cache Miss: Handle Bus Transaction
     if (!sim->bus.pending[core_id] && sim->bus.owner != core_id) {
-       
-        // If we have a Modified block at this index, we must write it back first (Conflict Miss)
-        if (entry->valid && entry->mesi_state == MESI_MODIFIED) {
-            // In a real MESI system, you'd issue a Flush here. 
-            // For this project, you can handle the write-back as a separate Bus transaction if needed.
-        }
+        // Note: Modified block eviction (if any) is handled implicitly by the bus protocol
 
         // Issue the Bus Read (BusRd)
-        sim->bus.pending_trans[core_id].cmd = 1; // 1: BusRd 
-        sim->bus.pending_trans[core_id].addr = addr; 
-        sim->bus.pending_trans[core_id].origid = core_id; 
+        sim->bus.pending_trans[core_id].cmd = BUS_RD;
+        sim->bus.pending_trans[core_id].addr = addr;
+        sim->bus.pending_trans[core_id].origid = core_id;
         sim->bus.pending[core_id] = true; 
         
         // sim->cores[core_id].read_miss++; // STATS - Moved to core.c
@@ -79,20 +74,20 @@ bool cache_write(Cache* cache, uint32_t addr, uint32_t data, Simulator* sim, int
     uint8_t block_offset = get_block_offset(addr);
     TSRAMEntry* entry = &cache->tsram[index];
 
-    // Hit only if we already "Own" the block (Modified or Exclusive) 
+    // Hit only if we already "Own" the block (Modified or Exclusive)
     if (entry->valid && entry->tag == tag &&
-        (entry->mesi_state == 3 || entry->mesi_state == 2)) {
+        (entry->mesi_state == MESI_MODIFIED || entry->mesi_state == MESI_EXCLUSIVE)) {
         uint16_t dsram_idx = index * CACHE_BLOCK_SIZE + block_offset;
         cache->dsram[dsram_idx] = data;
-        entry->mesi_state = 3; // Move to Modified 
+        entry->mesi_state = MESI_MODIFIED; // Move to Modified 
         
         // sim->cores[core_id].write_hit++; // STATS - Moved to core.c
         return true;
     }
 
-    // Miss or Shared: Must issue a full BusRdX (command 2) [cite: 48, 53]
+    // Miss or Shared: Must issue a full BusRdX
     if (!sim->bus.pending[core_id] && sim->bus.owner != core_id) {
-        sim->bus.pending_trans[core_id].cmd = 2; // BusRdX [cite: 48]
+        sim->bus.pending_trans[core_id].cmd = BUS_RDX;
         sim->bus.pending_trans[core_id].addr = addr;
         sim->bus.pending_trans[core_id].origid = core_id;
         sim->bus.pending[core_id] = true;
@@ -113,8 +108,8 @@ void cache_snoop(Cache* cache, BusTransaction* trans, int core_id, Simulator* si
 
     if (!entry->valid || entry->tag != tag) return; // Miss - don't have this block
 
-    if (trans->cmd == 1) { // BusRd
-        if (entry->mesi_state == 3) { // Modified -> Shared
+    if (trans->cmd == BUS_RD) {
+        if (entry->mesi_state == MESI_MODIFIED) { // Modified -> Shared
             // This cache must provide the data
             sim->bus.provider_id = core_id;
             // Calculate proper DSRAM offset for this cache block
@@ -122,19 +117,21 @@ void cache_snoop(Cache* cache, BusTransaction* trans, int core_id, Simulator* si
             for (int i = 0; i < CACHE_BLOCK_SIZE; i++) {
                 sim->bus.flush_data[i] = cache->dsram[dsram_base + i];
             }
-            entry->mesi_state = 1; // Transition to Shared
-            trans->shared = 1;
+            entry->mesi_state = MESI_SHARED; // Transition to Shared
+            // Refactor: Modified block provides data but does NOT assert 'Shared' signal in trace
+            trans->modified_response = true; 
+            trans->shared = false;
         }
-        else if (entry->mesi_state == 2) { // Exclusive -> Shared
-            entry->mesi_state = 1;
-            trans->shared = 1;
+        else if (entry->mesi_state == MESI_EXCLUSIVE) { // Exclusive -> Shared
+            entry->mesi_state = MESI_SHARED;
+            trans->shared = true;
         }
-        else if (entry->mesi_state == 1) { // Shared -> Shared
-            trans->shared = 1;
+        else if (entry->mesi_state == MESI_SHARED) { // Shared -> Shared
+            trans->shared = true;
         }
     }
-    else if (trans->cmd == 2) { // BusRdX
-        if (entry->mesi_state == 3) { // Modified -> Invalid
+    else if (trans->cmd == BUS_RDX) {
+        if (entry->mesi_state == MESI_MODIFIED) { // Modified -> Invalid
             // This cache must provide the data
             sim->bus.provider_id = core_id;
             uint16_t dsram_base = index * CACHE_BLOCK_SIZE;
@@ -143,7 +140,7 @@ void cache_snoop(Cache* cache, BusTransaction* trans, int core_id, Simulator* si
             }
         }
         // All states (M, E, S) -> Invalid
-        entry->mesi_state = 0;
+        entry->mesi_state = MESI_INVALID;
         entry->valid = false;
     }
 }
@@ -153,7 +150,7 @@ void cache_snoop(Cache* cache, BusTransaction* trans, int core_id, Simulator* si
 // ====================================================================================
 
 void cache_handle_bus_response(Cache* cache, BusTransaction* trans, int core_id, Simulator* sim) {
-    if (trans->cmd != 3) return; // Only care about BUS_FLUSH
+    if (trans->cmd != BUS_FLUSH) return;
 
     if (sim->bus.owner == core_id) {
         // Calculate proper DSRAM index for this word
@@ -168,11 +165,11 @@ void cache_handle_bus_response(Cache* cache, BusTransaction* trans, int core_id,
             cache->tsram[index].tag = tag;
             cache->tsram[index].valid = true;
             // Set final MESI state based on the requester's command
-            if (sim->bus.pending_trans[core_id].cmd == 1) {
-                cache->tsram[index].mesi_state = sim->bus.shared_at_request ? 1 : 2;
+            if (sim->bus.pending_trans[core_id].cmd == BUS_RD) {
+                cache->tsram[index].mesi_state = sim->bus.shared_at_request ? MESI_SHARED : MESI_EXCLUSIVE;
             }
             else {
-                cache->tsram[index].mesi_state = 3;
+                cache->tsram[index].mesi_state = MESI_MODIFIED;
             }
             // Release stall when block is complete - REMOVED to align with Reference Timing
             // Stall clears in next cycle's stage_memory() when cache_read() hits

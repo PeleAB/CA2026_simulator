@@ -4,7 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <direct.h>  // for _getcwd
+#include <inttypes.h>
+
+#ifdef _WIN32
+#include <direct.h>  // for _getcwd on Windows
+#define getcwd _getcwd
+#else
+#include <unistd.h>  // for getcwd on POSIX
+#endif
+
 #include "sim.h"
 
 // Default file names (27 total)
@@ -34,12 +42,11 @@ int main(int argc, char *argv[]) {
 
     // Print current working directory for debugging
     char cwd[1024];
-    if (_getcwd(cwd, sizeof(cwd)) != NULL) {
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
         printf("Current working directory: %s\n", cwd);
     }
 
     // Parse command line arguments or use defaults
-    printf("DEBUG: argc = %d\n", argc);
     if (argc == 1) {
         // No arguments - use default file names
         for (int i = 0; i < NUM_FILES; i++) {
@@ -110,7 +117,7 @@ int main(int argc, char *argv[]) {
     // Run simulation
     printf("Starting simulation...\n");
     run_simulator(sim);
-    printf("Simulation completed after %llu cycles\n", sim->global_cycle);
+    printf("Simulation completed after %" PRIu64 " cycles\n", sim->global_cycle);
 
     // Save outputs
     printf("Saving outputs...\n");
@@ -177,7 +184,7 @@ int main(int argc, char *argv[]) {
     printf("All outputs saved successfully\n");
     printf("\nSimulation Summary:\n");
     for (int i = 0; i < NUM_CORES; i++) {
-        printf("Core %d: %llu cycles, %llu instructions\n",
+        printf("Core %d: %" PRIu64 " cycles, %" PRIu64 " instructions\n",
                i, sim->cores[i].cycles, sim->cores[i].instructions);
     }
 

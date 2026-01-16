@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 /* ============================================
  * FILE I/O FUNCTIONS
@@ -214,7 +215,6 @@ bool save_trace(const char *filename, Core *core) {
     // Write all buffered trace lines
     // These are generated during simulation in the pipeline code
     for (int i = 0; i < core->trace_count; i++) {
-        if (i == 7) printf("DEBUG SAVE_TRACE: Idx 7 = %s\n", core->trace_lines[i]);
         fprintf(fp, "%s\n", core->trace_lines[i]);
     }
 
@@ -293,14 +293,14 @@ bool save_stats(const char *filename, Core *core) {
     }
 
     // Write statistics in required format (name value pairs, decimal)
-    fprintf(fp, "cycles %llu\n", core->cycles);
-    fprintf(fp, "instructions %llu\n", core->instructions);
-    fprintf(fp, "read_hit %llu\n", core->read_hit);
-    fprintf(fp, "write_hit %llu\n", core->write_hit);
-    fprintf(fp, "read_miss %llu\n", core->read_miss);
-    fprintf(fp, "write_miss %llu\n", core->write_miss);
-    fprintf(fp, "decode_stall %llu\n", core->decode_stall);
-    fprintf(fp, "mem_stall %llu\n", core->mem_stall);
+    fprintf(fp, "cycles %" PRIu64 "\n", core->cycles);
+    fprintf(fp, "instructions %" PRIu64 "\n", core->instructions);
+    fprintf(fp, "read_hit %" PRIu64 "\n", core->read_hit);
+    fprintf(fp, "write_hit %" PRIu64 "\n", core->write_hit);
+    fprintf(fp, "read_miss %" PRIu64 "\n", core->read_miss);
+    fprintf(fp, "write_miss %" PRIu64 "\n", core->write_miss);
+    fprintf(fp, "decode_stall %" PRIu64 "\n", core->decode_stall);
+    fprintf(fp, "mem_stall %" PRIu64 "\n", core->mem_stall);
 
     fclose(fp);
     return true;
