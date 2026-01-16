@@ -3,11 +3,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 #include "sim.h"
-
-static inline uint32_t get_block_base_addr(uint32_t addr) {
-    return addr & ~0x7;
-}
 
 // ====================================================================================
 // BUS ARBITER - Round-Robin Arbitration with 2-cycle latency
@@ -62,21 +59,19 @@ void bus_cycle(Simulator* sim) {
         output = bus->pending_trans[bus->owner];
         bus->provider_id = 4; // Default: Memory
         output.shared = false;
+        output.modified_response = false;
 
         // SNOOP: Other cores signal 'shared' and provide data if Modified
         for (int i = 0; i < 4; i++) {
             if (i != bus->owner) cache_snoop(&sim->cores[i].cache, &output, i, sim);
         }
-        bus->shared_at_request = output.shared;
         
-        // Trace Logic for compatibility with reference:
-        // If data is provided by a Core (Modified state), the Request trace shows Shared=0.
-        // The subsequent Flush trace will show Shared=1 (carried by flush).
-        BusTransaction trace_trans = output;
-        if (bus->provider_id != 4) {
-            trace_trans.shared = false;
-        }
-        add_bus_trace_entry(bus, &trace_trans, sim->global_cycle);
+        // Logic: The requester enters Shared state if ANYONE said Shared OR Modified
+        bus->shared_at_request = output.shared | output.modified_response;
+        
+        // Trace Logic: Now pure!
+        // The Request trace shows 'shared' exactly as signaled (False for Modified, True for Shared/Exclusive)
+        add_bus_trace_entry(bus, &output, sim->global_cycle);
 
         if (bus->provider_id != 4) {
             bus->state = BUS_STATE_FLUSH;
@@ -134,8 +129,8 @@ void add_bus_trace_entry(BusArbiter *bus, BusTransaction *trans, uint64_t cycle)
     if (bus->trace_count >= MAX_TRACE_LINES) return;
 
     snprintf(bus->trace_lines[bus->trace_count], TRACE_LINE_SIZE,
-             "%llu %d %d %06X %08X %d",
-             (unsigned long long)cycle,
+             "%" PRIu64 " %d %d %06X %08X %d",
+             cycle,
              trans->origid,
              (int)trans->cmd,
              trans->addr & 0xFFFFF,

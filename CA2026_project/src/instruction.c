@@ -58,11 +58,10 @@ const char* get_opcode_name(uint8_t opcode) {
 }
 
 // Print instruction in human-readable format
+// Note: buffer must be at least 256 bytes
 void print_instruction(Instruction inst, char *buffer) {
     const char *name = get_opcode_name(inst.opcode);
-
-    // Buffer size for instruction strings (assume 256 bytes max)
-    #define INST_BUFFER_SIZE 256
+    const size_t buf_size = 256;
 
     // Different format for different instruction types
     switch (inst.opcode) {
@@ -75,7 +74,7 @@ void print_instruction(Instruction inst, char *buffer) {
         case OP_SLL:
         case OP_SRA:
         case OP_SRL:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "%s $r%d, $r%d, $r%d", name, inst.rd, inst.rs, inst.rt);
+            snprintf(buffer, buf_size, "%s $r%d, $r%d, $r%d", name, inst.rd, inst.rs, inst.rt);
             break;
 
         case OP_BEQ:
@@ -84,28 +83,28 @@ void print_instruction(Instruction inst, char *buffer) {
         case OP_BGT:
         case OP_BLE:
         case OP_BGE:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "%s $r%d, $r%d, $r%d (target PC bits from rd)",
+            snprintf(buffer, buf_size, "%s $r%d, $r%d, $r%d (target PC bits from rd)",
                     name, inst.rs, inst.rt, inst.rd);
             break;
 
         case OP_JAL:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "%s $r%d (R15 = ret addr, PC = rd[9:0])", name, inst.rd);
+            snprintf(buffer, buf_size, "%s $r%d (R15 = ret addr, PC = rd[9:0])", name, inst.rd);
             break;
 
         case OP_LW:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "%s $r%d, MEM[$r%d + $r%d]", name, inst.rd, inst.rs, inst.rt);
+            snprintf(buffer, buf_size, "%s $r%d, MEM[$r%d + $r%d]", name, inst.rd, inst.rs, inst.rt);
             break;
 
         case OP_SW:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "%s MEM[$r%d + $r%d], $r%d", name, inst.rs, inst.rt, inst.rd);
+            snprintf(buffer, buf_size, "%s MEM[$r%d + $r%d], $r%d", name, inst.rs, inst.rt, inst.rd);
             break;
 
         case OP_HALT:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "halt");
+            snprintf(buffer, buf_size, "halt");
             break;
 
         default:
-            sprintf_s(buffer, INST_BUFFER_SIZE, "unknown opcode %d", inst.opcode);
+            snprintf(buffer, buf_size, "unknown opcode %d", inst.opcode);
             break;
     }
 }

@@ -4,70 +4,70 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <direct.h>  // for _getcwd
-#include "sim.h"
+#include <inttypes.h>
 
-// Default file names (27 total)
-// Inputs from ../inputs/
-// Outputs to ../examples/example_061225_win/my_outputs/
-static const char *DEFAULT_FILES[27] = {
-    // Inputs (0-4)
-    "../inputs/imem0.txt", "../inputs/imem1.txt", "../inputs/imem2.txt", "../inputs/imem3.txt",
-    "../inputs/memin.txt",
-    // Outputs (5-26)
-    "../examples/example_061225_win/my_outputs/memout.txt",
-    "../examples/example_061225_win/my_outputs/regout0.txt", "../examples/example_061225_win/my_outputs/regout1.txt", "../examples/example_061225_win/my_outputs/regout2.txt", "../examples/example_061225_win/my_outputs/regout3.txt",
-    "../examples/example_061225_win/my_outputs/core0trace.txt", "../examples/example_061225_win/my_outputs/core1trace.txt", "../examples/example_061225_win/my_outputs/core2trace.txt", "../examples/example_061225_win/my_outputs/core3trace.txt",
-    "../examples/example_061225_win/my_outputs/bustrace.txt",
-    "../examples/example_061225_win/my_outputs/dsram0.txt", "../examples/example_061225_win/my_outputs/dsram1.txt", "../examples/example_061225_win/my_outputs/dsram2.txt", "../examples/example_061225_win/my_outputs/dsram3.txt",
-    "../examples/example_061225_win/my_outputs/tsram0.txt", "../examples/example_061225_win/my_outputs/tsram1.txt", "../examples/example_061225_win/my_outputs/tsram2.txt", "../examples/example_061225_win/my_outputs/tsram3.txt",
-    "../examples/example_061225_win/my_outputs/stats0.txt", "../examples/example_061225_win/my_outputs/stats1.txt", "../examples/example_061225_win/my_outputs/stats2.txt", "../examples/example_061225_win/my_outputs/stats3.txt"
-};
+#ifdef _WIN32
+#include <direct.h>  // for _getcwd on Windows
+#define getcwd _getcwd
+#else
+#include <unistd.h>  // for getcwd on POSIX
+#endif
+
+#include "sim.h"
 
 #define NUM_FILES 27
 
-
+// Default file names (27 total) - used when running sim.exe without parameters
+// Files are expected in the same directory as sim.exe
+static const char *DEFAULT_FILE_NAMES[NUM_FILES] = {
+    // Inputs (0-4)
+    "imem0.txt", "imem1.txt", "imem2.txt", "imem3.txt", "memin.txt",
+    // Outputs (5-26)
+    "memout.txt",
+    "regout0.txt", "regout1.txt", "regout2.txt", "regout3.txt",
+    "core0trace.txt", "core1trace.txt", "core2trace.txt", "core3trace.txt",
+    "bustrace.txt",
+    "dsram0.txt", "dsram1.txt", "dsram2.txt", "dsram3.txt",
+    "tsram0.txt", "tsram1.txt", "tsram2.txt", "tsram3.txt",
+    "stats0.txt", "stats1.txt", "stats2.txt", "stats3.txt"
+};
 
 int main(int argc, char *argv[]) {
     Simulator *sim = NULL;  // Allocate on heap to avoid stack overflow
     const char *files[NUM_FILES];
 
-    // Print current working directory for debugging
-    char cwd[1024];
-    if (_getcwd(cwd, sizeof(cwd)) != NULL) {
-        printf("Current working directory: %s\n", cwd);
-    }
-
-    // Parse command line arguments or use defaults
-    printf("DEBUG: argc = %d\n", argc);
+    // Parse command line arguments according to PDF specification:
+    // Either 0 parameters (use defaults) or exactly 27 parameters
     if (argc == 1) {
-        // No arguments - use default file names
+        // No arguments - use default file names from same directory as sim.exe
         for (int i = 0; i < NUM_FILES; i++) {
-            files[i] = DEFAULT_FILES[i];
+            files[i] = DEFAULT_FILE_NAMES[i];
         }
-        printf("Using default file names\n");
-    } else if (argc == 6) { 
-        // 5 arguments: imem0-3, memin. Use defaults for outputs.
-        for (int i = 0; i < 5; i++) {
-            files[i] = argv[i + 1];
-        }
-        for (int i = 5; i < NUM_FILES; i++) {
-            files[i] = DEFAULT_FILES[i];
-        }
-        printf("Using custom inputs, default outputs\n");
     } else if (argc == NUM_FILES + 1) {  // Program name + 27 file args = 28 total
-        // All file names provided
+        // All 27 file names provided as per PDF specification:
+        // sim.exe imem0.txt imem1.txt imem2.txt imem3.txt memin.txt memout.txt
+        //         regout0.txt regout1.txt regout2.txt regout3.txt
+        //         core0trace.txt core1trace.txt core2trace.txt core3trace.txt
+        //         bustrace.txt
+        //         dsram0.txt dsram1.txt dsram2.txt dsram3.txt
+        //         tsram0.txt tsram1.txt tsram2.txt tsram3.txt
+        //         stats0.txt stats1.txt stats2.txt stats3.txt
         for (int i = 0; i < NUM_FILES; i++) {
             files[i] = argv[i + 1];
         }
     } else {
-        fprintf(stderr, "Usage: %s [imem0.txt imem1.txt imem2.txt imem3.txt memin.txt]\n", argv[0]);
-        fprintf(stderr, "   OR: %s [all 27 files]\n", argv[0]);
+        fprintf(stderr, "Usage: %s\n", argv[0]);
+        fprintf(stderr, "   OR: %s imem0.txt imem1.txt imem2.txt imem3.txt memin.txt memout.txt "
+                        "regout0.txt regout1.txt regout2.txt regout3.txt "
+                        "core0trace.txt core1trace.txt core2trace.txt core3trace.txt "
+                        "bustrace.txt "
+                        "dsram0.txt dsram1.txt dsram2.txt dsram3.txt "
+                        "tsram0.txt tsram1.txt tsram2.txt tsram3.txt "
+                        "stats0.txt stats1.txt stats2.txt stats3.txt\n", argv[0]);
         return 1;
     }
 
     // Allocate simulator on heap (avoid stack overflow - 8MB+ structure)
-    printf("Allocating simulator memory...\n");
     sim = (Simulator *)calloc(1, sizeof(Simulator));
     if (!sim) {
         fprintf(stderr, "Error: Failed to allocate memory for simulator\n");
@@ -75,11 +75,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Initialize simulator
-    printf("Initializing simulator...\n");
     init_simulator(sim);
 
-    // Load instruction memories
-    printf("Loading instruction memories...\n");
+    // Load instruction memories (files 0-3: imem0.txt - imem3.txt)
     for (int i = 0; i < NUM_CORES; i++) {
         if (!load_imem(files[i], sim->cores[i].imem)) {
             fprintf(stderr, "Error loading %s\n", files[i]);
@@ -88,41 +86,26 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Generate .asm files from loaded instructions for verification
-    printf("Generating .asm files for verification...\n");
-    for (int i = 0; i < NUM_CORES; i++) {
-        char asm_filename[64];
-        sprintf(asm_filename, "outputs/imem%d.asm", i);
-        if (!save_assembly(asm_filename, sim->cores[i].imem, IMEM_SIZE)) {
-            fprintf(stderr, "Warning: Failed to save %s\n", asm_filename);
-        }
-    }
-
-    // Load main memory
-    printf("Loading main memory...\n");
+    // Load main memory (file 4: memin.txt)
     if (!load_memin(files[4], &sim->main_memory)) {
         fprintf(stderr, "Error loading %s\n", files[4]);
         free(sim);
         return 1;
     }
-    
 
     // Run simulation
-    printf("Starting simulation...\n");
     run_simulator(sim);
-    printf("Simulation completed after %llu cycles\n", sim->global_cycle);
 
     // Save outputs
-    printf("Saving outputs...\n");
 
-    // Memory output
+    // Memory output (file 5: memout.txt)
     if (!save_memout(files[5], &sim->main_memory)) {
         fprintf(stderr, "Error saving %s\n", files[5]);
         free(sim);
         return 1;
     }
 
-    // Register outputs
+    // Register outputs (files 6-9: regout0.txt - regout3.txt)
     for (int i = 0; i < NUM_CORES; i++) {
         if (!save_regout(files[6 + i], &sim->cores[i])) {
             fprintf(stderr, "Error saving %s\n", files[6 + i]);
@@ -131,7 +114,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Core traces
+    // Core traces (files 10-13: core0trace.txt - core3trace.txt)
     for (int i = 0; i < NUM_CORES; i++) {
         if (!save_trace(files[10 + i], &sim->cores[i])) {
             fprintf(stderr, "Error saving %s\n", files[10 + i]);
@@ -140,14 +123,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Bus trace
+    // Bus trace (file 14: bustrace.txt)
     if (!save_bustrace(files[14], &sim->bus)) {
         fprintf(stderr, "Error saving %s\n", files[14]);
         free(sim);
         return 1;
     }
 
-    // DSRAM outputs
+    // DSRAM outputs (files 15-18: dsram0.txt - dsram3.txt)
     for (int i = 0; i < NUM_CORES; i++) {
         if (!save_dsram(files[15 + i], &sim->cores[i].cache)) {
             fprintf(stderr, "Error saving %s\n", files[15 + i]);
@@ -156,7 +139,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // TSRAM outputs
+    // TSRAM outputs (files 19-22: tsram0.txt - tsram3.txt)
     for (int i = 0; i < NUM_CORES; i++) {
         if (!save_tsram(files[19 + i], &sim->cores[i].cache)) {
             fprintf(stderr, "Error saving %s\n", files[19 + i]);
@@ -165,20 +148,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Statistics outputs
+    // Statistics outputs (files 23-26: stats0.txt - stats3.txt)
     for (int i = 0; i < NUM_CORES; i++) {
         if (!save_stats(files[23 + i], &sim->cores[i])) {
             fprintf(stderr, "Error saving %s\n", files[23 + i]);
             free(sim);
             return 1;
         }
-    }
-
-    printf("All outputs saved successfully\n");
-    printf("\nSimulation Summary:\n");
-    for (int i = 0; i < NUM_CORES; i++) {
-        printf("Core %d: %llu cycles, %llu instructions\n",
-               i, sim->cores[i].cycles, sim->cores[i].instructions);
     }
 
     // Free allocated memory

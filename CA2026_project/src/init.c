@@ -55,8 +55,6 @@ void init_core(Core *core, int core_id) {
     core->halted = false;
     core->halt_fetch = false;
     core->wb_reg_written = 0;
-    core->post_wb_reg_addr = 0;
-    core->post_wb_reg_val = 0;
     core->pending_reg_write_addr = 0;
     core->pending_reg_write_val = 0;
 
@@ -110,7 +108,6 @@ void init_bus_arbiter(BusArbiter *bus) {
     bus->state = BUS_STATE_IDLE;
     bus->timer = 0;
     bus->provider_id = 4;
-    bus->upgrade_only = false;
     bus->words_transferred = 0;
 
     // No pending transactions
