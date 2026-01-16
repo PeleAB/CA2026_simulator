@@ -10,161 +10,64 @@
 /* ============================================
  * FILE I/O FUNCTIONS
  * Functions for loading and saving simulation data
+ * Per PDF spec: files are in the same directory as sim.exe
  * ============================================ */
 
-// Note: Pipeline operations implemented in core.c
-// Note: Cache operations implemented in cache.c
-// Note: Bus operations implemented in bus.c
-
-// Bus operations are implemented in bus.c
-
-// Main memory operations are implemented in bus.c
-
-// Helper to open input files from multiple potential locations
-static FILE* open_input_file_robust(const char *filename) {
-    FILE *fp = fopen(filename, "r");
-    if (fp) return fp;
-
-    // Try finding it in specific directories relative to CWD
-    const char *prefixes[] = {"inputs/", "../inputs/", "../../inputs/", "../../../inputs/"};
-    char path[512];
-
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof(path), "%s%s", prefixes[i], filename);
-        fp = fopen(path, "r");
-        if (fp) {
-            printf("Found input file at: %s\n", path);
-            return fp;
-        }
-    }
-    
-    // Attempt to strip directory prefix if present in filename and try again
-    const char *basename = strrchr(filename, '/');
-    if (!basename) basename = strrchr(filename, '\\');
-    
-    if (basename) {
-        basename++; // skip separator
-        // Try prefixes with basename
-        for (int i = 0; i < 4; i++) {
-            snprintf(path, sizeof(path), "%s%s", prefixes[i], basename);
-            fp = fopen(path, "r");
-            if (fp) {
-                printf("Found input file at: %s\n", path);
-                return fp;
-            }
-        }
-    }
-
-    return NULL;
-}
-
-// File I/O (to be implemented)
 bool load_imem(const char *filename, uint32_t *imem) {
-    FILE *fp;
-    char line[256];
-    int address = 0;
-
-    // Step 1: Open file for reading
-    fp = open_input_file_robust(filename);
+    FILE *fp = fopen(filename, "r");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for reading\n", filename);
+        fprintf(stderr, "Note: When running without arguments, input files must be in the same directory as the executable.\n");
         return false;
     }
 
-    // Step 2: Read line-by-line
+    char line[256];
+    int address = 0;
+
     while (fgets(line, sizeof(line), fp) != NULL && address < IMEM_SIZE) {
         uint32_t instruction;
-
-        // Step 3: Parse hexadecimal value (8 hex digits = 32 bits)
         if (sscanf(line, "%x", &instruction) == 1) {
-            // Step 4: Store in imem array
             imem[address] = instruction;
             address++;
         }
-        // If sscanf fails, skip the line (could be empty or malformed)
     }
 
-    // Step 5: Fill remaining addresses with zeros (already done by init)
-    // but let's be explicit for clarity
+    // Fill remaining addresses with zeros
     while (address < IMEM_SIZE) {
         imem[address] = 0;
         address++;
     }
 
-    // Step 6: Close file
     fclose(fp);
-
-    printf("Loaded %d instructions from %s\n", address, filename);
     return true;
 }
 
-bool load_memin(const char* filename, MainMemory* mem) {
-    FILE* fp = fopen(filename, "r");
+bool load_memin(const char *filename, MainMemory *mem) {
+    FILE *fp = fopen(filename, "r");
     if (!fp) {
-        fprintf(stderr, "ERROR: Failed to open %s for reading\n", filename);
+        fprintf(stderr, "Error: Could not open %s for reading\n", filename);
         return false;
     }
 
-    char line[12];
+    char line[16];
     int i = 0;
     while (fgets(line, sizeof(line), fp) && i < MAIN_MEM_SIZE) {
-        // Parse hex value
         mem->data[i] = (uint32_t)strtoul(line, NULL, 16);
         i++;
     }
-    
+
     fclose(fp);
     return true;
 }
-// Helper to handle output directory creation if writing to outputs/
-static FILE* open_output_file_robust(const char *filename) {
-    FILE *fp = NULL;
-
-    // First, try to open the file with the full path as provided
-    fp = fopen(filename, "w");
-    if (fp) {
-        return fp;
-    }
-
-    // If that fails, extract basename and try alternative locations
-    const char *basename = strrchr(filename, '/');
-    if (!basename) basename = strrchr(filename, '\\');
-    if (basename) basename++; else basename = filename;
-
-    // Try finding output directory in various locations
-    const char *prefixes[] = {
-        "../examples/example_061225_win/my_outputs/",
-        "../outputs/",
-        "../../outputs/",
-        "../../../outputs/",
-        "outputs/"
-    };
-
-    // Try opening file in each potential output directory location
-    char path[512];
-    for (int i = 0; i < 5; i++) {
-        snprintf(path, sizeof(path), "%s%s", prefixes[i], basename);
-        fp = fopen(path, "w");
-        if (fp) {
-            return fp;
-        }
-    }
-
-    // Final fallback: try writing to current directory
-    printf("Warning: Could not find output directory. Writing to CWD.\n");
-    return fopen(basename, "w");
-}
 
 bool save_memout(const char *filename, MainMemory *mem) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
     }
 
-    // Find last non-zero address for sparse memory output
+    // Find last non-zero address
     int last_addr = 0;
     for (int i = MAIN_MEM_SIZE - 1; i >= 0; i--) {
         if (mem->data[i] != 0) {
@@ -173,9 +76,8 @@ bool save_memout(const char *filename, MainMemory *mem) {
         }
     }
 
-    // Write only up to last non-zero address (minimum 64 words to match reference format)
-    int write_count = (last_addr < 63) ? 64 : last_addr + 1;
-    for (int i = 0; i < write_count; i++) {
+    // Write up to last non-zero address (minimum 1 line)
+    for (int i = 0; i <= last_addr; i++) {
         fprintf(fp, "%08X\n", mem->data[i]);
     }
 
@@ -184,17 +86,13 @@ bool save_memout(const char *filename, MainMemory *mem) {
 }
 
 bool save_regout(const char *filename, Core *core) {
-    FILE *fp;
-
-    // Open file for writing
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
     }
 
     // Write registers R2 through R15 (skip R0 and R1)
-    // R0 = always zero, R1 = immediate register
     for (int i = 2; i < NUM_REGISTERS; i++) {
         fprintf(fp, "%08X\n", core->registers[i]);
     }
@@ -204,16 +102,12 @@ bool save_regout(const char *filename, Core *core) {
 }
 
 bool save_trace(const char *filename, Core *core) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
     }
 
-    // Write all buffered trace lines
-    // These are generated during simulation in the pipeline code
     for (int i = 0; i < core->trace_count; i++) {
         fprintf(fp, "%s\n", core->trace_lines[i]);
     }
@@ -223,15 +117,12 @@ bool save_trace(const char *filename, Core *core) {
 }
 
 bool save_bustrace(const char *filename, BusArbiter *bus) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
     }
 
-    // Write all buffered bus trace lines
     for (int i = 0; i < bus->trace_count; i++) {
         fprintf(fp, "%s\n", bus->trace_lines[i]);
     }
@@ -241,9 +132,7 @@ bool save_bustrace(const char *filename, BusArbiter *bus) {
 }
 
 bool save_dsram(const char *filename, Cache *cache) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
@@ -259,23 +148,17 @@ bool save_dsram(const char *filename, Cache *cache) {
 }
 
 bool save_tsram(const char *filename, Cache *cache) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
     }
 
     // Write all 64 TSRAM entries (tag + MESI state)
-    // Format: bits[13:12] = MESI, bits[11:0] = tag, bits[31:14] = 0
+    // Format: bits[13:12] = MESI, bits[11:0] = tag
     for (int i = 0; i < NUM_CACHE_BLOCKS; i++) {
-        uint32_t tsram_word = 0;
-
-        // Pack MESI state (2 bits) and tag (12 bits) into lower 14 bits
-        tsram_word = ((uint32_t)cache->tsram[i].mesi_state << 12) |
-                     (cache->tsram[i].tag & 0x0FFF);
-
+        uint32_t tsram_word = ((uint32_t)cache->tsram[i].mesi_state << 12) |
+                              (cache->tsram[i].tag & 0x0FFF);
         fprintf(fp, "%08X\n", tsram_word);
     }
 
@@ -284,9 +167,7 @@ bool save_tsram(const char *filename, Cache *cache) {
 }
 
 bool save_stats(const char *filename, Core *core) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
@@ -306,10 +187,11 @@ bool save_stats(const char *filename, Core *core) {
     return true;
 }
 
-// Simulation control
-void run_simulator(Simulator *sim) {
-    printf("Running simulator...\n");
+/* ============================================
+ * SIMULATION CONTROL
+ * ============================================ */
 
+void run_simulator(Simulator *sim) {
     // Run until all cores are halted and all pipelines are empty
     while (!all_cores_halted(sim) || !all_pipelines_empty(sim)) {
         // Execute bus cycle (arbitration and snooping)
@@ -323,18 +205,13 @@ void run_simulator(Simulator *sim) {
             execute_core_cycle(&sim->cores[i], sim);
         }
 
-        // Increment global cycle counter AFTER executing
-        // This ensures trace numbering starts at 0 while first fetch happens during cycle 1
         sim->global_cycle++;
 
-        // Safety limit to prevent infinite loops during development
+        // Safety limit to prevent infinite loops
         if (sim->global_cycle > 100000) {
-            printf("Warning: Simulation stopped after 100000 cycles\n");
             break;
         }
     }
-
-    printf("Simulation complete\n");
 }
 
 bool all_cores_halted(Simulator *sim) {
@@ -346,10 +223,9 @@ bool all_cores_halted(Simulator *sim) {
     return true;
 }
 
-bool all_pipelines_empty(Simulator* sim) {
+bool all_pipelines_empty(Simulator *sim) {
     for (int i = 0; i < NUM_CORES; i++) {
-        Pipeline* p = &sim->cores[i].pipeline;
-        // The simulator only exits when ALL these are false 
+        Pipeline *p = &sim->cores[i].pipeline;
         if (p->fetch.valid || p->decode.valid || p->execute.valid ||
             p->mem.valid || p->writeback.valid) {
             return false;
@@ -358,7 +234,10 @@ bool all_pipelines_empty(Simulator* sim) {
     return true;
 }
 
-// Helper to format register name for assembly output
+/* ============================================
+ * ASSEMBLY OUTPUT (optional debug helper)
+ * ============================================ */
+
 static void get_asm_reg_name(int reg, char *buffer) {
     if (reg == 0) {
         strcpy(buffer, "$zero");
@@ -370,9 +249,7 @@ static void get_asm_reg_name(int reg, char *buffer) {
 }
 
 bool save_assembly(const char *filename, uint32_t *imem, int size) {
-    FILE *fp;
-
-    fp = open_output_file_robust(filename);
+    FILE *fp = fopen(filename, "w");
     if (!fp) {
         fprintf(stderr, "Error: Could not open %s for writing\n", filename);
         return false;
@@ -391,13 +268,12 @@ bool save_assembly(const char *filename, uint32_t *imem, int size) {
 
     for (int pc = 0; pc <= last_addr; pc++) {
         Instruction inst = decode_instruction(imem[pc]);
-        
+
         get_asm_reg_name(inst.rd, rd_str);
         get_asm_reg_name(inst.rs, rs_str);
         get_asm_reg_name(inst.rt, rt_str);
 
-        // Format matches imem0.asm: \t<op> <rd>, <rs>, <rt>, <imm>\t\t# PC=<pc>
-        fprintf(fp, "\t%s %s, %s, %s, %d\t\t# PC=%d\n", 
+        fprintf(fp, "\t%s %s, %s, %s, %d\t\t# PC=%d\n",
                 get_opcode_name(inst.opcode),
                 rd_str, rs_str, rt_str, inst.imm,
                 pc);
