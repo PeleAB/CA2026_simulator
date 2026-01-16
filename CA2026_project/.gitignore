@@ -1,0 +1,35 @@
+# Build outputs
+build/
+outputs/
+
+# Visual Studio
+vs/.vs/
+vs/CA2026/
+vs/x64/
+vs/Win32/
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.tlog
+*.idb
+*.ipch
+*.log
+
+# Test outputs (keep reference_outputs)
+examples/*/my_outputs/
+
+# IDE / Editor
+.claude/
+.vs/
+*.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+
+# OS
+.DS_Store
+Thumbs.db
