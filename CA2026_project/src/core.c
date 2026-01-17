@@ -9,6 +9,7 @@
 // REGISTER FILE OPERATIONS
 // ====================================================================================
 
+// Read a register value. R0 is hardwired to 0, R1 returns the immediate.
 uint32_t read_register(Core *core, uint8_t reg_num, uint32_t imm_val) {
     if (reg_num == 0) return 0;
     if (reg_num == 1) return imm_val; // R1 contains sign-extended immediate of THIS instruction
@@ -16,6 +17,7 @@ uint32_t read_register(Core *core, uint8_t reg_num, uint32_t imm_val) {
     return 0;
 }
 
+// Write a value to a register. R0 and R1 are read-only.
 void write_register(Core *core, uint8_t reg_num, uint32_t value) {
     // PDF: R0 and R1 are special and cannot be written by software
     if (reg_num >= 2 && reg_num < NUM_REGISTERS) {
@@ -54,6 +56,7 @@ static bool resolve_branch_condition(Core *core, Instruction inst, int32_t rs_va
     return take_branch;
 }
 
+// IF stage: fetch the next instruction from IMEM and increment PC.
 void stage_fetch(Core* core) {
     if (core->halted || core->halt_fetch) return;
 
@@ -78,7 +81,7 @@ void stage_fetch(Core* core) {
         }
     }
 }
-// Stage 2: Instruction Decode
+// ID stage: decode instruction, read registers, check hazards, resolve branches.
 void stage_decode(Core* core) {
     PipelineReg *dec = &core->pipeline.decode; 
     PipelineReg *fet = &core->pipeline.fetch;
@@ -132,14 +135,14 @@ void stage_decode(Core* core) {
         dec->internal_stall = false;
         dec->rs_value = read_register(core, inst.rs, dec->imm_val);
         dec->rt_value = read_register(core, inst.rt, dec->imm_val);
+        dec->rd_value = read_register(core, inst.rd, dec->imm_val);
 
         // 1. Resolve Conditional Branches 
         if (is_branch_instruction(inst)) {
             // Check condition using the values read from registers 
             if (resolve_branch_condition(core, inst, dec->rs_value, dec->rt_value)) {
                 // PDF: Jump target is R[rd][9:0]
-                uint32_t rd_val = read_register(core, inst.rd, dec->imm_val);
-                core->branch_target = rd_val & 0x3FF;
+                core->branch_target = dec->rd_value & 0x3FF;
                 core->branch_pending = true;
             }
         } 
@@ -153,8 +156,7 @@ void stage_decode(Core* core) {
             dec->rw = 15; // JAL always writes to R15 
 
             // The Jump Target is the value in R[rd] bits 9:0 
-            uint32_t rd_val = read_register(core, inst.rd, dec->imm_val);
-            core->branch_target = rd_val & 0x3FF;
+            core->branch_target = dec->rd_value & 0x3FF;
             core->branch_pending = true;
         }
 
@@ -170,7 +172,7 @@ void stage_decode(Core* core) {
     }
 }
 
-// Stage 3: Execute
+// EX stage: perform ALU operations and compute memory addresses.
 void stage_execute(Core *core) {
     Pipeline *p = &core->pipeline;
 
@@ -183,6 +185,7 @@ void stage_execute(Core *core) {
         p->execute.pc = p->decode.pc;
         p->execute.rs_value = p->decode.rs_value;
         p->execute.rt_value = p->decode.rt_value;
+        p->execute.rd_value = p->decode.rd_value;
         p->execute.is_halt = p->decode.is_halt;
         p->execute.valid = true;
         p->decode.valid = false;
@@ -194,13 +197,8 @@ void stage_execute(Core *core) {
         uint32_t rt_val = p->execute.rt_value;
         uint32_t result = 0;
         bool write_result = false;
-        uint32_t sw_data = 0;
-
-        if (inst.opcode == OP_SW) {
-            // Sign-extend immediate for R1 calculation [cite: 21]
-            uint32_t imm_val = (uint32_t)inst.imm;
-            sw_data = read_register(core, inst.rd, imm_val); // Read RD (Data)
-        }
+        
+        uint32_t sw_data = p->execute.rd_value;
 
         switch (inst.opcode) {
             case OP_ADD: result = rs_val + rt_val; write_result = true; break;
@@ -225,8 +223,7 @@ void stage_execute(Core *core) {
     }
 }
 
-// Stage 4: Memory Access
-// Stage 4: Memory Access
+// MEM stage: access the data cache for loads and stores.
 void stage_memory(Core* core, Simulator* sim) {
     Pipeline* p = &core->pipeline;
     
@@ -245,16 +242,16 @@ void stage_memory(Core* core, Simulator* sim) {
         // We must check for a cache miss the MOMENT the instruction enters MEM.
         // This prevents Write-Back from pulling it out at the start of Cycle T+1.
         Instruction inst = p->mem.inst;
-        if (inst.opcode == 16 || inst.opcode == 17) { // LW or SW
+        if (inst.opcode == OP_LW || inst.opcode == OP_SW) {
             uint32_t addr = p->mem.alu_result;
             uint8_t index = (addr >> 3) & 0x3F;
             uint16_t tag = (addr >> 9) & 0xFFF;
             TSRAMEntry* entry = &core->cache.tsram[index];
 
-            bool hit = (entry->valid && entry->tag == tag && entry->mesi_state != 0);
+            bool hit = (entry->valid && entry->tag == tag && entry->mesi_state != MESI_INVALID);
 
             // Special case: SW into a Shared block requires a BusRdX (Upgrade), so it's a "Miss"
-            if (inst.opcode == 17 && hit && entry->mesi_state == 1) {
+            if (inst.opcode == OP_SW && hit && entry->mesi_state == MESI_SHARED) {
                 hit = false;
             }
 
@@ -268,16 +265,16 @@ void stage_memory(Core* core, Simulator* sim) {
     // 2. Process instruction currently in MEM
     if (p->mem.valid) {
         Instruction inst = p->mem.inst;
-        if (inst.opcode == 16 || inst.opcode == 17) {
+        if (inst.opcode == OP_LW || inst.opcode == OP_SW) {
             uint32_t loaded_data;
             // This call triggers the actual bus request on the first cycle of a miss
-            bool hit = (inst.opcode == 16) ?
+            bool hit = (inst.opcode == OP_LW) ?
                 cache_read(&core->cache, p->mem.alu_result, &loaded_data, sim, core->core_id) :
                 cache_write(&core->cache, p->mem.alu_result, p->mem.mem_data, sim, core->core_id);
 
             // Update Statistics (Only on first attempt)
             if (!is_retry) {
-                if (inst.opcode == 16) { // LW
+                if (inst.opcode == OP_LW) {
                     if (hit) core->read_hit++;
                     else core->read_miss++;
                 } else { // SW
@@ -287,7 +284,7 @@ void stage_memory(Core* core, Simulator* sim) {
             }
 
             if (hit) {
-                if (inst.opcode == 16) p->mem.mem_data = loaded_data; // Capture data for WB
+                if (inst.opcode == OP_LW) p->mem.mem_data = loaded_data;
                 p->mem.internal_stall = false; // Release the stall for next cycle
             }
             else {
@@ -297,7 +294,7 @@ void stage_memory(Core* core, Simulator* sim) {
         }
     }
 }
-// Stage 5: Write Back
+// WB stage: write ALU result or loaded data back to the register file.
 void stage_writeback(Core *core, Simulator *sim) {
     Pipeline *p = &core->pipeline;
     core->wb_reg_written = 0;
@@ -351,9 +348,6 @@ static void log_cycle_trace(Core *core) {
 
     if (core->pipeline.fetch.valid) {
         offset += sprintf(buffer + offset, "%03X ", core->pipeline.fetch.pc);
-    } else if (!core->halted && !core->halt_fetch && core->pc < IMEM_SIZE) {
-        // Fetch is idle or awaiting targets, show what is pending fetch
-        offset += sprintf(buffer + offset, "%03X ", core->pc);
     } else {
         offset += sprintf(buffer + offset, "--- ");
     }

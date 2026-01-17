@@ -214,7 +214,6 @@ bool save_trace(const char *filename, Core *core) {
     // Write all buffered trace lines
     // These are generated during simulation in the pipeline code
     for (int i = 0; i < core->trace_count; i++) {
-        if (i == 7) printf("DEBUG SAVE_TRACE: Idx 7 = %s\n", core->trace_lines[i]);
         fprintf(fp, "%s\n", core->trace_lines[i]);
     }
 

@@ -13,6 +13,7 @@ static inline uint32_t get_block_base_addr(uint32_t addr) {
 // BUS ARBITER - Round-Robin Arbitration with 2-cycle latency
 // ====================================================================================
 
+// Queue a bus request from a core. The request waits until the bus is free.
 void bus_request(BusArbiter *bus, int core_id, BusCommand cmd, uint32_t addr, uint32_t data) {
     if (core_id < 0 || core_id >= NUM_CORES) return;
 
@@ -26,19 +27,22 @@ void bus_request(BusArbiter *bus, int core_id, BusCommand cmd, uint32_t addr, ui
     // The command appears on the bus at T+2.
 }
 
+// Pick the next core to grant bus access using round-robin.
 void bus_arbitrate(BusArbiter *bus) {
     int start = (bus->last_granted + 1) % NUM_CORES; // Round-robin start point 
     for (int i = 0; i < NUM_CORES; i++) {
         int core_id = (start + i) % NUM_CORES;
         if (bus->pending[core_id]) {
-            bus->owner = core_id;
-            bus->last_granted = core_id; // Mandatory for fair RR 
+            bus->owner = core_id; // Save the owner
+            bus->last_granted = core_id; // Save the last granted core
             bus->current = bus->pending_trans[core_id];
             bus->pending[core_id] = false; // Clear request once granted
             return;
         }
     }
 }
+// Main bus state machine - called once per cycle.
+// Handles arbitration, snooping, memory latency, and data transfer.
 void bus_cycle(Simulator* sim) {
     BusArbiter* bus = &sim->bus;
     BusTransaction output = { 0 };
@@ -60,8 +64,30 @@ void bus_cycle(Simulator* sim) {
 
     case BUS_STATE_REQUEST:
         output = bus->pending_trans[bus->owner];
-        bus->provider_id = 4; // Default: Memory
         output.shared = false;
+
+        // Handle Explicit Flush
+        if (output.cmd == BUS_FLUSH) {
+            // Set Provider: The Requesting Core (Owner) provides the data
+            bus->provider_id = bus->owner; 
+
+            // Copy Data: Move 8 words from Core's DSRAM to Bus Buffer
+            uint8_t index = (output.addr >> 3) & 0x3F;
+            for (int j = 0; j < 8; j++) {
+                int dsram_idx = (index * 8) + j; 
+                bus->flush_data[j] = sim->cores[bus->owner].cache.dsram[dsram_idx];
+            }
+
+            // Trace & Transition: Log it and jump straight to Flush state
+            add_bus_trace_entry(bus, &output, sim->global_cycle);
+            
+            bus->state = BUS_STATE_FLUSH;
+            bus->timer = 8; 
+            break;
+        }
+
+        // Existing logic resumes here (for BusRd / BusRdX)...
+        bus->provider_id = 4; // Default: Memory
 
         // SNOOP: Other cores signal 'shared' and provide data if Modified
         for (int i = 0; i < 4; i++) {
@@ -134,11 +160,11 @@ void add_bus_trace_entry(BusArbiter *bus, BusTransaction *trans, uint64_t cycle)
     if (bus->trace_count >= MAX_TRACE_LINES) return;
 
     snprintf(bus->trace_lines[bus->trace_count], TRACE_LINE_SIZE,
-             "%llu %d %d %06X %08X %d",
+             "%llu %01X %01X %06X %08X %01X",
              (unsigned long long)cycle,
              trans->origid,
              (int)trans->cmd,
-             trans->addr & 0xFFFFF,
+             trans->addr & 0x1FFFFF,
              trans->data,
              trans->shared ? 1 : 0);
 

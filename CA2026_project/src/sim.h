@@ -143,6 +143,7 @@ typedef struct {
     // Data values propagated through pipeline
     uint32_t rs_value;
     uint32_t rt_value;
+    uint32_t rd_value;
     uint32_t alu_result;
     uint32_t mem_data;
     uint32_t imm_val; // The sign-extended immediate for THIS specific instruction

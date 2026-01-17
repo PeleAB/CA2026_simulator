@@ -112,8 +112,7 @@ void print_instruction(Instruction inst, char *buffer) {
 
 // Check if instruction is a branch
 bool is_branch_instruction(Instruction inst) {
-    return (inst.opcode >= OP_BEQ && inst.opcode <= OP_BGE) ||
-           inst.opcode == OP_JAL;
+    return inst.opcode >= OP_BEQ && inst.opcode <= OP_BGE;
 }
 
 // Check if instruction reads from memory
