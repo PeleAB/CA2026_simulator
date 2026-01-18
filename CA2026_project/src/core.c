@@ -2,6 +2,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "sim.h"
 
@@ -338,8 +339,20 @@ void stage_writeback(Core *core, Simulator *sim) {
 }
 
 // Log detailed cycle trace 
-static void log_cycle_trace(Core *core) {
-    if (core->trace_count >= MAX_TRACE_LINES) return;
+static int log_cycle_trace(Core *core) {
+    // Grow buffer if needed
+    if (core->trace_count >= core->trace_capacity) {
+        int new_capacity = core->trace_capacity * 2;
+        void *new_lines = realloc(core->trace_lines, new_capacity * TRACE_LINE_SIZE);
+        if (!new_lines) {
+            fprintf(stderr, "ERROR: Failed to reallocate trace buffer for core %d (requested %d lines)\n", 
+                    core->core_id, new_capacity);
+            return -1;
+        }
+        
+        core->trace_lines = new_lines;
+        core->trace_capacity = new_capacity;
+    }
 
     char *buffer = core->trace_lines[core->trace_count];
     int offset = 0;
@@ -371,6 +384,7 @@ static void log_cycle_trace(Core *core) {
         offset += sprintf(buffer + offset, "%08X ", core->registers[i]);
     }
     core->trace_count++;
+    return 0;
 }
 
 // Execute one clock cycle
@@ -398,7 +412,10 @@ void execute_core_cycle(Core *core, Simulator *sim) {
 
     // Logging and Global updates
     if (!core->halted) {
-        log_cycle_trace(core);
+        if (log_cycle_trace(core) == -1) {
+            cleanup_simulator(sim);
+            exit(1);
+        }
         
         // Physical Register File update: happens at the END of the clock cycle
         if (core->pending_reg_write_addr >= 2) {

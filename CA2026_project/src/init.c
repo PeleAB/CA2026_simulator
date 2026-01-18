@@ -8,20 +8,20 @@ void init_simulator(Simulator *sim) {
 
     // Initialize all cores
     for (int i = 0; i < NUM_CORES; i++) {
-        init_core(&sim->cores[i], i);
+        init_core(&sim->cores[i], i, sim);
     }
 
     // Initialize main memory
     init_main_memory(&sim->main_memory);
 
     // Initialize bus arbiter
-    init_bus_arbiter(&sim->bus);
+    init_bus_arbiter(&sim->bus, sim);
 
     sim->global_cycle = 0;
     sim->running = true;
 }
 
-void init_core(Core *core, int core_id) {
+void init_core(Core *core, int core_id, Simulator *sim) {
     memset(core, 0, sizeof(Core));
 
     core->core_id = core_id;
@@ -60,8 +60,15 @@ void init_core(Core *core, int core_id) {
     core->pending_reg_write_addr = 0;
     core->pending_reg_write_val = 0;
 
-    // Initialize trace buffer (fixed size, no malloc needed)
+    // Initialize trace buffer - single allocation for array of fixed-size lines
     core->trace_count = 0;
+    core->trace_capacity = INITIAL_TRACE_CAPACITY;
+    core->trace_lines = malloc(core->trace_capacity * TRACE_LINE_SIZE);
+    if (!core->trace_lines) {
+        fprintf(stderr, "ERROR: Failed to allocate trace buffer for core %d\n", core_id);
+        cleanup_simulator(sim);
+        exit(1);
+    }
 }
 
 void init_cache(Cache *cache) {
@@ -95,7 +102,7 @@ void init_main_memory(MainMemory *mem) {
     mem->words_sent = 0;
 }
 
-void init_bus_arbiter(BusArbiter *bus) {
+void init_bus_arbiter(BusArbiter *bus, Simulator *sim) {
     memset(bus, 0, sizeof(BusArbiter));
 
     // Initialize current transaction to no command
@@ -118,6 +125,40 @@ void init_bus_arbiter(BusArbiter *bus) {
         bus->pending[i] = false;
     }
 
-    // Initialize trace buffer (fixed size, no malloc needed)
+    // Initialize trace buffer - single allocation for array of fixed-size lines
     bus->trace_count = 0;
+    bus->trace_capacity = INITIAL_TRACE_CAPACITY;
+    bus->trace_lines = malloc(bus->trace_capacity * TRACE_LINE_SIZE);
+    if (!bus->trace_lines) {
+        fprintf(stderr, "ERROR: Failed to allocate trace buffer for bus arbiter\n");
+        cleanup_simulator(sim);
+        exit(1);
+    }
+}
+
+// Cleanup functions to free dynamically allocated memory
+void cleanup_core(Core *core) {
+    if (core->trace_lines) {
+        free(core->trace_lines);
+        core->trace_lines = NULL;
+    }
+    core->trace_count = 0;
+    core->trace_capacity = 0;
+}
+
+void cleanup_bus_arbiter(BusArbiter *bus) {
+    if (bus->trace_lines) {
+        free(bus->trace_lines);
+        bus->trace_lines = NULL;
+    }
+    bus->trace_count = 0;
+    bus->trace_capacity = 0;
+}
+
+void cleanup_simulator(Simulator *sim) {
+    for (int i = 0; i < NUM_CORES; i++) {
+        cleanup_core(&sim->cores[i]);
+    }
+    cleanup_bus_arbiter(&sim->bus);
+    free(sim);
 }

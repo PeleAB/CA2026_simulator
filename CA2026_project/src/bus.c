@@ -2,6 +2,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "sim.h"
 
@@ -79,7 +80,7 @@ void bus_cycle(Simulator* sim) {
             }
 
             // Trace & Transition: Log it and jump straight to Flush state
-            add_bus_trace_entry(bus, &output, sim->global_cycle);
+            add_bus_trace_entry(bus, &output, sim->global_cycle, sim);
             
             bus->state = BUS_STATE_FLUSH;
             bus->timer = 8; 
@@ -102,7 +103,7 @@ void bus_cycle(Simulator* sim) {
         if (bus->provider_id != 4) {
             trace_trans.shared = false;
         }
-        add_bus_trace_entry(bus, &trace_trans, sim->global_cycle);
+        add_bus_trace_entry(bus, &trace_trans, sim->global_cycle, sim);
 
         if (bus->provider_id != 4) {
             bus->state = BUS_STATE_FLUSH;
@@ -137,7 +138,7 @@ void bus_cycle(Simulator* sim) {
         output.data = bus->flush_data[offset];
         output.shared = bus->shared_at_request;
 
-        add_bus_trace_entry(bus, &output, sim->global_cycle);
+        add_bus_trace_entry(bus, &output, sim->global_cycle, sim);
 
         // Parallel Memory Update
         if (bus->provider_id != 4) sim->main_memory.data[output.addr] = output.data;
@@ -155,9 +156,23 @@ void bus_cycle(Simulator* sim) {
         break;
     }
 }
-void add_bus_trace_entry(BusArbiter *bus, BusTransaction *trans, uint64_t cycle) {
+void add_bus_trace_entry(BusArbiter *bus, BusTransaction *trans, uint64_t cycle, Simulator *sim) {
     if (trans == NULL || trans->cmd == BUS_NO_CMD) return;
-    if (bus->trace_count >= MAX_TRACE_LINES) return;
+    
+    // Grow buffer if needed
+    if (bus->trace_count >= bus->trace_capacity) {
+        int new_capacity = bus->trace_capacity * 2;
+        void *new_lines = realloc(bus->trace_lines, new_capacity * TRACE_LINE_SIZE);
+        if (!new_lines) {
+            fprintf(stderr, "ERROR: Failed to reallocate trace buffer for bus (requested %d lines)\n", 
+                    new_capacity);
+            cleanup_simulator(sim);
+            exit(1);
+        }
+        
+        bus->trace_lines = new_lines;
+        bus->trace_capacity = new_capacity;
+    }
 
     snprintf(bus->trace_lines[bus->trace_count], TRACE_LINE_SIZE,
              "%llu %01X %01X %06X %08X %01X",

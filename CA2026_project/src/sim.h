@@ -16,8 +16,8 @@
 #define CACHE_BLOCK_SIZE 8      // 8 words per block
 #define NUM_CACHE_BLOCKS 64     // 512 / 8 = 64 blocks
 #define MAIN_MEM_LATENCY 16     // cycles for first word
-#define MAX_TRACE_LINES 100000  // Maximum trace lines per core/bus
 #define TRACE_LINE_SIZE 512     // Size of each trace line
+#define INITIAL_TRACE_CAPACITY 1024  // Initial allocation for trace lines
 
 /* ============================================
  * INSTRUCTION FORMAT AND OPCODES
@@ -208,9 +208,10 @@ typedef struct {
     uint64_t decode_stall;
     uint64_t mem_stall;
 
-    // Trace output buffer - fixed size to avoid malloc issues
-    char trace_lines[MAX_TRACE_LINES][TRACE_LINE_SIZE];
+    // Trace output buffer - dynamically allocated array of fixed-size lines
+    char (*trace_lines)[TRACE_LINE_SIZE];  // Pointer to array of fixed 512-byte lines
     int trace_count;
+    int trace_capacity;    // Current allocated capacity
 } Core;
 
 /* ============================================
@@ -253,9 +254,10 @@ typedef struct {
     BusTransaction pending_trans[NUM_CORES];
     uint64_t request_time[NUM_CORES]; 
 
-    // Bus trace output - fixed size buffer to avoid malloc issues
-    char trace_lines[MAX_TRACE_LINES][TRACE_LINE_SIZE];
+    // Bus trace output - dynamically allocated array of fixed-size lines
+    char (*trace_lines)[TRACE_LINE_SIZE];  // Pointer to array of fixed 512-byte lines
     int trace_count;
+    int trace_capacity;    // Current allocated capacity
 } BusArbiter;
 
 /* ============================================
@@ -276,10 +278,10 @@ typedef struct {
 
 // Initialization
 void init_simulator(Simulator *sim);
-void init_core(Core *core, int core_id);
+void init_core(Core *core, int core_id, Simulator *sim);
 void init_cache(Cache *cache);
 void init_main_memory(MainMemory *mem);
-void init_bus_arbiter(BusArbiter *bus);
+void init_bus_arbiter(BusArbiter *bus, Simulator *sim);
 
 // Cache operations
 bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int core_id);
@@ -317,7 +319,7 @@ void cache_handle_bus_response(Cache *cache, BusTransaction *trans, int core_id,
 void bus_cycle(Simulator *sim);
 void bus_request(BusArbiter *bus, int core_id, BusCommand cmd, uint32_t addr, uint32_t data);
 void bus_arbitrate(BusArbiter *bus);
-void add_bus_trace_entry(BusArbiter *bus, BusTransaction *trans, uint64_t cycle);
+void add_bus_trace_entry(BusArbiter *bus, BusTransaction *trans, uint64_t cycle, Simulator *sim);
 
 // Main memory operations
 void memory_cycle(MainMemory *mem, BusTransaction *bus_trans, Simulator *sim);
@@ -341,6 +343,10 @@ bool save_assembly(const char *filename, uint32_t *imem, int size);
 // Simulation control
 void run_simulator(Simulator *sim);
 bool all_cores_halted(Simulator *sim);
-bool all_pipelines_empty(Simulator *sim);
+
+// Cleanup functions
+void cleanup_core(Core *core);
+void cleanup_bus_arbiter(BusArbiter *bus);
+void cleanup_simulator(Simulator *sim);
 
 #endif // SIM_H

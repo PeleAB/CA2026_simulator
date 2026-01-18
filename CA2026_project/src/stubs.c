@@ -310,7 +310,7 @@ void run_simulator(Simulator *sim) {
     printf("Running simulator...\n");
 
     // Run until all cores are halted and all pipelines are empty
-    while (!all_cores_halted(sim) || !all_pipelines_empty(sim)) {
+    while (!all_cores_halted(sim)) {
         // Execute bus cycle (arbitration and snooping)
         bus_cycle(sim);
 
@@ -325,6 +325,11 @@ void run_simulator(Simulator *sim) {
         // Increment global cycle counter AFTER executing
         // This ensures trace numbering starts at 0 while first fetch happens during cycle 1
         sim->global_cycle++;
+        // Safety limit to prevent infinite loops during development
+        if (sim->global_cycle > 1000000) {
+            printf("BLABLA: Simulation stopped after 100000 cycles\n");
+            break;
+        }
     }
 
     printf("Simulation complete\n");
@@ -339,17 +344,6 @@ bool all_cores_halted(Simulator *sim) {
     return true;
 }
 
-bool all_pipelines_empty(Simulator* sim) {
-    for (int i = 0; i < NUM_CORES; i++) {
-        Pipeline* p = &sim->cores[i].pipeline;
-        // The simulator only exits when ALL these are false 
-        if (p->fetch.valid || p->decode.valid || p->execute.valid ||
-            p->mem.valid || p->writeback.valid) {
-            return false;
-        }
-    }
-    return true;
-}
 
 // Helper to format register name for assembly output
 static void get_asm_reg_name(int reg, char *buffer) {
