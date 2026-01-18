@@ -177,6 +177,9 @@ void cache_handle_bus_response(Cache* cache, BusTransaction* trans, int core_id,
     if (trans->cmd != 3) return; // Only care about BUS_FLUSH
 
     if (sim->bus.owner == core_id) {
+        if (sim->bus.pending_trans[core_id].cmd == BUS_FLUSH) {
+            return;
+        }
         // Calculate proper DSRAM index for this word
         uint8_t index = get_cache_index(trans->addr);
         uint8_t block_offset = get_block_offset(trans->addr);
