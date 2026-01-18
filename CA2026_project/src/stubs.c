@@ -325,12 +325,6 @@ void run_simulator(Simulator *sim) {
         // Increment global cycle counter AFTER executing
         // This ensures trace numbering starts at 0 while first fetch happens during cycle 1
         sim->global_cycle++;
-
-        // Safety limit to prevent infinite loops during development
-        if (sim->global_cycle > 100000) {
-            printf("Warning: Simulation stopped after 100000 cycles\n");
-            break;
-        }
     }
 
     printf("Simulation complete\n");
