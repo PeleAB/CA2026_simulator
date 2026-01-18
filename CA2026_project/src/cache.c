@@ -54,14 +54,29 @@ bool cache_read(Cache* cache, uint32_t addr, uint32_t* data, Simulator* sim, int
 
     // 2. Cache Miss: Handle Bus Transaction
     if (!sim->bus.pending[core_id] && sim->bus.owner != core_id) {
-        // Note: Modified block eviction (if any) is handled implicitly by the bus protocol
+        // If we have a Modified block at this index, we must write it back first (Conflict Miss)
+        if (entry->valid && entry->mesi_state == MESI_MODIFIED) {
+            // Construct a FLUSH transaction for the OLD block
+            sim->bus.pending_trans[core_id].cmd = BUS_FLUSH;
+            // Reconstruct the full address of the VICTIM block
+            sim->bus.pending_trans[core_id].addr = (entry->tag << 9) | (index << 3);
+            sim->bus.pending_trans[core_id].origid = core_id;
+            sim->bus.pending_trans[core_id].data = 0; // Data handled by bus logic
+            sim->bus.pending[core_id] = true;
+
+            // Invalidate the line now so the next retry sees a clean miss
+            entry->mesi_state = MESI_INVALID;
+            entry->valid = false;
+
+            return false; // Stall core while flush happens
+        }
 
         // Issue the Bus Read (BusRd)
         sim->bus.pending_trans[core_id].cmd = BUS_RD;
         sim->bus.pending_trans[core_id].addr = addr;
         sim->bus.pending_trans[core_id].origid = core_id;
-        sim->bus.pending[core_id] = true; 
-        
+        sim->bus.pending[core_id] = true;
+
         // sim->cores[core_id].read_miss++; // STATS - Moved to core.c
     }
 

@@ -129,14 +129,14 @@ void stage_decode(Core* core) {
         dec->internal_stall = false;
         dec->rs_value = read_register(core, inst.rs, dec->imm_val);
         dec->rt_value = read_register(core, inst.rt, dec->imm_val);
+        dec->rd_value = read_register(core, inst.rd, dec->imm_val);
 
-        // 1. Resolve Conditional Branches 
+        // 1. Resolve Conditional Branches
         if (is_branch_instruction(inst)) {
-            // Check condition using the values read from registers 
+            // Check condition using the values read from registers
             if (resolve_branch_condition(core, inst, dec->rs_value, dec->rt_value)) {
                 // PDF: Jump target is R[rd][9:0]
-                uint32_t rd_val = read_register(core, inst.rd, dec->imm_val);
-                core->branch_target = rd_val & 0x3FF;
+                core->branch_target = dec->rd_value & 0x3FF;
                 core->branch_pending = true;
             }
         } 
@@ -147,11 +147,10 @@ void stage_decode(Core* core) {
             // the return address is PC + 2
             dec->alu_result = (dec->pc + 2) & 0x3FF; 
             dec->reg_write = true;
-            dec->rw = 15; // JAL always writes to R15 
+            dec->rw = 15; // JAL always writes to R15
 
-            // The Jump Target is the value in R[rd] bits 9:0 
-            uint32_t rd_val = read_register(core, inst.rd, dec->imm_val);
-            core->branch_target = rd_val & 0x3FF;
+            // The Jump Target is the value in R[rd] bits 9:0
+            core->branch_target = dec->rd_value & 0x3FF;
             core->branch_pending = true;
         }
 
@@ -180,6 +179,7 @@ void stage_execute(Core *core) {
         p->execute.pc = p->decode.pc;
         p->execute.rs_value = p->decode.rs_value;
         p->execute.rt_value = p->decode.rt_value;
+        p->execute.rd_value = p->decode.rd_value;
         p->execute.is_halt = p->decode.is_halt;
         p->execute.valid = true;
         p->decode.valid = false;
@@ -191,13 +191,9 @@ void stage_execute(Core *core) {
         uint32_t rt_val = p->execute.rt_value;
         uint32_t result = 0;
         bool write_result = false;
-        uint32_t sw_data = 0;
 
-        if (inst.opcode == OP_SW) {
-            // Sign-extend immediate for R1 calculation [cite: 21]
-            uint32_t imm_val = (uint32_t)inst.imm;
-            sw_data = read_register(core, inst.rd, imm_val); // Read RD (Data)
-        }
+        // Use rd_value read in Decode stage (fixes hazard timing for SW)
+        uint32_t sw_data = p->execute.rd_value;
 
         switch (inst.opcode) {
             case OP_ADD: result = rs_val + rt_val; write_result = true; break;

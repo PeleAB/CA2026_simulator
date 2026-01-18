@@ -57,9 +57,31 @@ void bus_cycle(Simulator* sim) {
 
     case BUS_STATE_REQUEST:
         output = bus->pending_trans[bus->owner];
-        bus->provider_id = 4; // Default: Memory
         output.shared = false;
         output.modified_response = false;
+
+        // Handle Explicit Flush (dirty block eviction before fetching new block)
+        if (output.cmd == BUS_FLUSH) {
+            // Set Provider: The Requesting Core (Owner) provides the data
+            bus->provider_id = bus->owner;
+
+            // Copy Data: Move 8 words from Core's DSRAM to Bus Buffer
+            uint8_t index = (output.addr >> 3) & 0x3F;
+            for (int j = 0; j < 8; j++) {
+                int dsram_idx = (index * 8) + j;
+                bus->flush_data[j] = sim->cores[bus->owner].cache.dsram[dsram_idx];
+            }
+
+            // Trace & Transition: Log it and jump straight to Flush state
+            add_bus_trace_entry(bus, &output, sim->global_cycle);
+
+            bus->state = BUS_STATE_FLUSH;
+            bus->timer = 8;
+            break;
+        }
+
+        // Existing logic for BusRd / BusRdX
+        bus->provider_id = 4; // Default: Memory
 
         // SNOOP: Other cores signal 'shared' and provide data if Modified
         for (int i = 0; i < 4; i++) {
