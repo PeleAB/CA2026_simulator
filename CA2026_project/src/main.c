@@ -12,16 +12,16 @@
 // Outputs to ../examples/example_061225_win/my_outputs/
 static const char *DEFAULT_FILES[27] = {
     // Inputs (0-4)
-    "../inputs/imem0.txt", "../inputs/imem1.txt", "../inputs/imem2.txt", "../inputs/imem3.txt",
-    "../inputs/memin.txt",
+    "./imem0.txt", "./imem1.txt", "./imem2.txt", "./imem3.txt",
+    "./memin.txt",
     // Outputs (5-26)
-    "../examples/example_061225_win/my_outputs/memout.txt",
-    "../examples/example_061225_win/my_outputs/regout0.txt", "../examples/example_061225_win/my_outputs/regout1.txt", "../examples/example_061225_win/my_outputs/regout2.txt", "../examples/example_061225_win/my_outputs/regout3.txt",
-    "../examples/example_061225_win/my_outputs/core0trace.txt", "../examples/example_061225_win/my_outputs/core1trace.txt", "../examples/example_061225_win/my_outputs/core2trace.txt", "../examples/example_061225_win/my_outputs/core3trace.txt",
-    "../examples/example_061225_win/my_outputs/bustrace.txt",
-    "../examples/example_061225_win/my_outputs/dsram0.txt", "../examples/example_061225_win/my_outputs/dsram1.txt", "../examples/example_061225_win/my_outputs/dsram2.txt", "../examples/example_061225_win/my_outputs/dsram3.txt",
-    "../examples/example_061225_win/my_outputs/tsram0.txt", "../examples/example_061225_win/my_outputs/tsram1.txt", "../examples/example_061225_win/my_outputs/tsram2.txt", "../examples/example_061225_win/my_outputs/tsram3.txt",
-    "../examples/example_061225_win/my_outputs/stats0.txt", "../examples/example_061225_win/my_outputs/stats1.txt", "../examples/example_061225_win/my_outputs/stats2.txt", "../examples/example_061225_win/my_outputs/stats3.txt"
+    "./memout.txt",
+    "./regout0.txt", "./regout1.txt", "./regout2.txt", "./regout3.txt",
+    "./core0trace.txt", "./core1trace.txt", "./core2trace.txt", "./core3trace.txt",
+    "./bustrace.txt",
+    "./dsram0.txt", "./dsram1.txt", "./dsram2.txt", "./dsram3.txt",
+    "./tsram0.txt", "./tsram1.txt", "./tsram2.txt", "./tsram3.txt",
+    "./stats0.txt", "./stats1.txt", "./stats2.txt", "./stats3.txt"
 };
 
 #define NUM_FILES 27
@@ -88,15 +88,16 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Generate .asm files from loaded instructions for verification
-    printf("Generating .asm files for verification...\n");
-    for (int i = 0; i < NUM_CORES; i++) {
-        char asm_filename[64];
-        sprintf(asm_filename, "outputs/imem%d.asm", i);
-        if (!save_assembly(asm_filename, sim->cores[i].imem, IMEM_SIZE)) {
-            fprintf(stderr, "Warning: Failed to save %s\n", asm_filename);
-        }
-    }
+    // For debugging, uncomment:
+    // // Generate .asm files from loaded instructions for verification
+    // printf("Generating .asm files for verification...\n");
+    // for (int i = 0; i < NUM_CORES; i++) {
+    //     char asm_filename[64];
+    //     sprintf(asm_filename, "outputs/imem%d.asm", i);
+    //     if (!save_assembly(asm_filename, sim->cores[i].imem, IMEM_SIZE)) {
+    //         fprintf(stderr, "Warning: Failed to save %s\n", asm_filename);
+    //     }
+    // }
 
     // Load main memory
     printf("Loading main memory...\n");
